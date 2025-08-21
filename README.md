@@ -112,27 +112,6 @@ Update fetchSwapRoute in swap-interface.tsx for custom API parameters.
 Adjust executeSwap to handle additional transaction types or intents.
 Extend WALLET_OPTIONS in wallet-connect.tsx for new wallets.
 
-Development
-Project Structure
-intear-dex/
-├── components/
-│   ├── ui/
-│   ├── swap-interface.tsx
-│   ├── wallet-connect.tsx
-│   ├── token-selector.tsx
-│   ├── swap-route.tsx
-├── lib/
-│   ├── swap-execution.ts
-├── pages/
-│   ├── api/
-│   │   ├── tokens.ts
-│   │   ├── swap-route.ts
-├── public/
-├── styles/
-├── .env.local
-├── README.md
-├── package.json
-
 Key Dependencies
 
 @near-wallet-selector/core, @near-wallet-selector/my-near-wallet, @near-wallet-selector/meteor-wallet, @near-wallet-selector/hot-wallet
