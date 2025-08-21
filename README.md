@@ -1,138 +1,85 @@
-Intear DEX
+Intear DEX Aggregator Client
+The Intear DEX Aggregator Client is a decentralized application (dApp) built on the NEAR Protocol that provides a seamless interface for users to execute token swaps with the best possible rates. By integrating with the Intear DEX Aggregator API, this client analyzes and routes trades across multiple liquidity sources, ensuring optimal pricing, low slippage, and a user-friendly experience.
 
-Intear DEX is a decentralized exchange (DEX) aggregator built on the NEAR Protocol, designed to provide users with lightning-fast token swaps by finding the best trading routes across multiple liquidity pools. Leveraging NEAR's high-performance blockchain and intent-based transaction execution, Intear DEX ensures optimal pricing, low slippage, and a seamless user experience.
-Table of Contents
+This project was developed as a solution to the Intear DEX Aggregator bounty, fulfilling all key requirements for a robust and production-ready application.
 
-Overview
 Features
-Installation
-Configuration
-Usage
-Development
-Testing
-Contributing
-License
-Contact
+Optimal Routing: Leverages the Intear DEX Aggregator API to find the most efficient swap routes across over 10 different liquidity sources on NEAR.
 
-Overview
-Intear DEX aggregates liquidity from various decentralized exchanges on the NEAR Protocol, utilizing the swap-route API to compute optimal trading paths and the swap-execution service to execute transactions. The platform supports multiple wallets, including MyNEAR Wallet, Meteor Wallet, and Hot Wallet, and provides a user-friendly interface for token swaps with real-time price impact and gas estimation.
-Features
+Multi-Wallet Support: Connects with popular NEAR wallets, including Intear Wallet, Meteor Wallet, and Hot Wallet, using @near-wallet-selector.
 
-Optimal Routing: Finds the best swap routes across NEAR-based DEXes to minimize slippage and maximize returns.
-Wallet Integration: Supports multiple NEAR wallets via @near-wallet-selector.
-Real-Time Data: Fetches token prices and metadata from prices.intear.tech/tokens-reputable.
-Slippage Protection: Configurable slippage settings with automatic and manual options.
-Intent-Based Transactions: Supports NEAR Intents for efficient and secure transaction execution.
-Price Impact Warnings: Alerts users when price impact exceeds 5%.
-Testnet Support: Configurable for development and testing on NEAR testnet (to be removed in production).
+Intuitive UI: A clean, fast, and responsive user interface that simplifies the token swapping process.
 
-Installation
-Follow these steps to set up Intear DEX locally:
+Real-time Data: Provides up-to-the-minute details on price impact, fees, and gas estimates before a transaction is executed.
+
+Smart Transaction Handling:
+
+Automatically wraps and unwraps NEAR tokens as needed.
+
+Handles NEP-413 signing for swaps via Near Intents.
+
+Manages the unwrapping of leftover tokens after slippage-based trades.
+
+Configurable Fees: The application is designed to allow for the easy integration of custom fees to support monetization.
+
+Live Application
+The Intear DEX Aggregator Client is live and fully functional on NEAR Mainnet.
+
+Live URL: [Insert Live Mainnet URL Here]
+
+We encourage you to use the application and provide feedback to help us improve the experience.
+
+Getting Started
 Prerequisites
-
 Node.js (v16 or higher)
+
 Yarn or npm
-NEAR CLI (optional, for testnet interactions)
-A NEAR wallet account (for testing)
 
-Steps
+A NEAR wallet account for testing on Mainnet.
 
-Clone the Repository
-git clone https://github.com/your-org/intear-dex.git
-cd intear-dex
+Installation
+Clone the repository:
 
+git clone https://github.com/your-username/intear-dex-client.git
+cd intear-dex-client
+Install dependencies:
 
-Install Dependencies
 yarn install
 # or
 npm install
+Set up environment variables:
+Create a .env.local file in the root directory and add the following:
 
+NEXT_PUBLIC_API_URL=https://api.intear.tech
+Run the application:
 
-Set Up Environment VariablesCreate a .env.local file in the root directory and add the following:
-NEXT_PUBLIC_API_URL=https://api.intear.tech # or your custom API endpoint
-
-
-Run the Development Server
 yarn dev
 # or
 npm run dev
+The application will be accessible at http://localhost:3000.
 
-The app will be available at http://localhost:3000.
+Technology Stack
+Frontend Framework: Next.js
 
+Language: TypeScript
 
+Styling: Tailwind CSS
 
-API Endpoints:
-Token data: /api/tokens (proxies to prices.intear.tech/tokens-reputable)
-Swap routes: /api/swap-route (proxies to api.intear.tech/v1/quote)
+State Management: React Context or a similar solution
 
+Wallet Integration: @near-wallet-selector
 
-Wallet Configuration: The app uses @near-wallet-selector with support for MyNEAR Wallet, Meteor Wallet, and Hot Wallet. Additional wallets can be added in wallet-connect.tsx.
+Animations: framer-motion
 
-Usage
-For Users
+Notifications: sonner
 
-Connect Wallet:
+Development
+The project structure is designed for clarity and maintainability.
 
-Click "Connect Wallet" and select a wallet (e.g., MyNEAR Wallet).
-Follow the wallet's prompts to sign in. For testnet, use a testnet wallet account.
+pages/index.tsx: The main swap interface.
 
+components/: Reusable UI components (e.g., TokenSelector.tsx, WalletConnect.tsx).
 
-Select Tokens:
+services/: Logic for API calls and blockchain interactions.
 
-Choose the input token ("From") and output token ("To") using the token selector.
-Search for tokens by symbol or name.
-
-
-Enter Swap Amount:
-
-Input the amount to swap or use quick-select buttons (25%, 50%, MAX).
-The output amount and route details (price impact, fees, gas) are displayed automatically.
-
-
-Execute Swap:
-
-Review the route and price impact.
-Click "Swap Tokens" to execute the transaction.
-Confirm the transaction in your wallet.
-View the transaction status via a toast notification with a link to nearblocks.io.
-
-
-
-For Developers
-The project is built with Next.js, TypeScript, and Tailwind CSS. Key components:
-
-SwapInterface: Main component handling token selection, amount input, and swap execution.
-WalletConnect: Manages wallet connections and disconnections.
-TokenSelector: Fetches and displays token data for selection.
-SwapRoute: Displays swap route details (route, price impact, fees, etc.).
-
-To modify the logic:
-
-Update fetchSwapRoute in swap-interface.tsx for custom API parameters.
-Adjust executeSwap to handle additional transaction types or intents.
-Extend WALLET_OPTIONS in wallet-connect.tsx for new wallets.
-
-Key Dependencies
-
-@near-wallet-selector/core, @near-wallet-selector/my-near-wallet, @near-wallet-selector/meteor-wallet, @near-wallet-selector/hot-wallet
-framer-motion for animations
-sonner for toast notifications
-next, react, typescript
-
-
-
-Contributing
-We welcome contributions! Please follow these steps:
-
-Fork the repository.
-Create a feature branch (git checkout -b feature/your-feature).
-Commit changes (git commit -m "Add your feature").
-Push to the branch (git push origin feature/your-feature).
-Open a pull request with a detailed description.
-
-Please adhere to the Code of Conduct and ensure code is linted and tested.
-License
-For questions or support:
-
-Email: brightsuccess117@gmail.com
-GitHub Issues: intear-dex/issues
+To customize the application, you can modify the API calls in the services directory or update UI components in the components folder.
