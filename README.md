@@ -40,7 +40,7 @@ A NEAR wallet account for testing on Mainnet.
 Installation
 Clone the repository:
 
-git clone https://github.com/your-username/intear-dex-client.git
+git clone https://github.com/brightswe/intear-swap.git
 cd intear-dex-client
 Install dependencies:
 
