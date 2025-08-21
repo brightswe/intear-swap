@@ -1,5 +1,6 @@
-Intear DEX Aggregator Client
-The Intear DEX Aggregator Client is a decentralized application (dApp) built on the NEAR Protocol that provides a seamless interface for users to execute token swaps with the best possible rates. By integrating with the Intear DEX Aggregator API, this client analyzes and routes trades across multiple liquidity sources, ensuring optimal pricing, low slippage, and a user-friendly experience.
+Intear DEX Aggregator
+
+The Intear DEX Aggregator is a decentralized application (dApp) built on the NEAR Protocol that provides a seamless interface for users to execute token swaps with the best possible rates. By integrating with the Intear DEX Aggregator API, this client analyzes and routes trades across multiple liquidity sources, ensuring optimal pricing, low slippage, and a user-friendly experience.
 
 This project was developed as a solution to the Intear DEX Aggregator bounty, fulfilling all key requirements for a robust and production-ready application.
 
