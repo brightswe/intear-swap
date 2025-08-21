@@ -3,10 +3,12 @@
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { createSwapExecutionService, SwapExecutionResult } from "@/lib/swap-execution"
 import { AnimatePresence, motion } from "framer-motion"
 import { ArrowUpDown, Shield, TrendingUp } from "lucide-react"
 import Image from "next/image"
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { toast } from "sonner"
 import SwapRouteComponent from "./swap-route"
 import TokenSelector from "./token-selector"
 import WalletConnect from "./wallet-connect"
@@ -23,9 +25,17 @@ interface Token {
 interface SwapRoute {
   route: string[]
   amountOut: string
+  minimumReceived: string
   priceImpact: string
+  estimatedGas: string
+  fee: string
   transactions: any[]
-  estimatedGas?: string
+  needsUnwrap: boolean
+  deadline: number
+  hasSlippage: boolean
+  dexId: string
+  useIntents: boolean
+  intentsQuote: any
 }
 
 export default function SwapInterface() {
@@ -37,6 +47,7 @@ export default function SwapInterface() {
   const [isLoading, setIsLoading] = useState(false)
   const [walletConnected, setWalletConnected] = useState(false)
   const [account, setAccount] = useState<any>(null)
+  const [wallet, setWallet] = useState<any>(null)
   const [isSwapping, setIsSwapping] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [priceImpactWarning, setPriceImpactWarning] = useState(false)
@@ -44,26 +55,17 @@ export default function SwapInterface() {
   const validateAndSetAmount = useCallback((value: string) => {
     setError(null)
 
-    // Allow empty string
     if (value === "") {
       setFromAmount("")
       return
     }
 
-    // Remove any non-numeric characters except decimal point
     const cleanValue = value.replace(/[^0-9.]/g, "")
-
-    // Prevent multiple decimal points
     const parts = cleanValue.split(".")
     if (parts.length > 2) return
-
-    // Limit decimal places to 6
     if (parts[1] && parts[1].length > 6) return
 
-    // Convert to number and validate
     const numValue = Number.parseFloat(cleanValue)
-
-    // Prevent negative values, NaN, and extremely large numbers
     if (numValue < 0 || isNaN(numValue) || numValue > 1e18) {
       setError("Invalid amount")
       return
@@ -82,10 +84,37 @@ export default function SwapInterface() {
     setRoute(null)
   }, [fromToken, toToken, fromAmount, toAmount])
 
+  // Validation function for tokens
+  const isValidToken = useCallback((token: Token | null): boolean => {
+    return !!(token?.id && token?.symbol && Number.isInteger(token?.decimals) && token.decimals >= 0)
+  }, [])
+
+  // Validation for route fetch conditions
+  const shouldFetchRoute = useMemo(() => {
+    const validFromToken = isValidToken(fromToken)
+    const validToToken = isValidToken(toToken)
+    const validAmount = fromAmount && Number.parseFloat(fromAmount) > 0
+    const differentTokens = fromToken?.id !== toToken?.id
+
+    console.log("[v1] Route fetch validation:", {
+      validFromToken,
+      validToToken,
+      validAmount,
+      differentTokens,
+      fromTokenId: fromToken?.id,
+      toTokenId: toToken?.id,
+      fromAmount
+    })
+
+    return validFromToken && validToToken && validAmount && differentTokens
+  }, [fromToken, toToken, fromAmount, isValidToken])
+
   const fetchSwapRoute = useCallback(async () => {
-    if (!fromToken || !toToken || !fromAmount || Number.parseFloat(fromAmount) <= 0) {
+    if (!shouldFetchRoute) {
+      console.log("[v1] Skipping route fetch: validation failed")
       setRoute(null)
       setToAmount("")
+      setError(null)
       return
     }
 
@@ -93,18 +122,34 @@ export default function SwapInterface() {
     setError(null)
 
     try {
+      console.log("[v1] Fetching swap route for:", {
+        tokenIn: fromToken!.id,
+        tokenOut: toToken!.id,
+        amountIn: fromAmount,
+        decimalsIn: fromToken!.decimals,
+        decimalsOut: toToken!.decimals
+      })
+
       const response = await fetch("/api/swap-route", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          tokenIn: fromToken.id,
-          tokenOut: toToken.id,
+          tokenIn: fromToken!.id,
+          tokenOut: toToken!.id,
           amountIn: fromAmount,
+          decimalsIn: fromToken!.decimals,
+          decimalsOut: toToken!.decimals,
+          slippageType: "Auto",
+          maxSlippage: "0.05",
+          minSlippage: "0.001",
+          traderAccountId: account?.accountId || "",
+          signingPublicKey: account?.publicKey || "",
         }),
       })
 
       if (!response.ok) {
-        throw new Error(`Failed to fetch route: ${response.status}`)
+        const errorData = await response.json().catch(() => ({ error: "Unknown error" }))
+        throw new Error(errorData.error || `Failed to fetch route: ${response.status}`)
       }
 
       const data = await response.json()
@@ -116,68 +161,153 @@ export default function SwapInterface() {
       setRoute(data)
       setToAmount(data.amountOut)
 
-      // Check price impact
       const impact = Number.parseFloat(data.priceImpact)
-      setPriceImpactWarning(impact > 5) // Warn if > 5%
+      setPriceImpactWarning(impact > 5)
+
+      console.log("[v1] Route fetched successfully:", data)
     } catch (error) {
-      console.error("[dex] Route fetch failed:", error)
-      setError(error instanceof Error ? error.message : "Failed to calculate route")
+      console.error("[v1] Route fetch failed:", error)
+      const errorMessage = error instanceof Error ? error.message : "Failed to calculate route"
+      setError(errorMessage)
+      toast.error(errorMessage, {
+        description: "Please try different tokens or a smaller amount.",
+      })
       setRoute(null)
       setToAmount("")
     } finally {
       setIsLoading(false)
     }
-  }, [fromToken, toToken, fromAmount])
+  }, [shouldFetchRoute, fromToken, toToken, fromAmount, account])
 
   const executeSwap = useCallback(async () => {
-    if (!route || !account || !walletConnected) return
+    if (!route || !account || !walletConnected || !wallet || !fromToken) return
 
     setIsSwapping(true)
     setError(null)
 
     try {
-      // Execute swap transactions
-      for (const transaction of route.transactions) {
-        // This would integrate with the actual wallet
-        console.log("[dex] Executing transaction:", transaction)
+      const swapService = createSwapExecutionService(wallet, account)
+
+      // Check balance for NEAR swaps
+      if (fromToken.id === "near") {
+        const balanceResponse = await fetch(`https://rpc.mainnet.near.org`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: "dontcare",
+            method: "query",
+            params: {
+              request_type: "view_account",
+              finality: "final",
+              account_id: account.accountId,
+            },
+          }),
+        })
+
+        const balanceData = await balanceResponse.json()
+        const availableBalance = Number.parseFloat(balanceData.result.amount) / 1e24
+        const inputAmount = Number.parseFloat(fromAmount)
+
+        if (availableBalance < inputAmount + Number(route.estimatedGas)) {
+          throw new Error("Insufficient NEAR balance for swap and gas")
+        }
       }
 
-      // Reset form on success
+      const result: SwapExecutionResult = await swapService.executeSwap(route)
+      if (!result.success) {
+        throw new Error(result.error || "Swap execution failed")
+      }
+
+      toast.success("Swap completed successfully!", {
+        description: result.transactionHash ? (
+          <a
+            href={`https://nearblocks.io/txns/${result.transactionHash}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-600 underline"
+          >
+            View transaction
+          </a>
+        ) : undefined,
+      })
+
+      // Reset form after successful swap
       setFromAmount("")
       setToAmount("")
       setRoute(null)
     } catch (error) {
-      console.error("[dex] Swap failed:", error)
-      setError(error instanceof Error ? error.message : "Swap failed")
+      console.error("[v1] Swap failed:", error)
+      const errorMessage = error instanceof Error ? error.message : "Swap failed"
+      setError(errorMessage)
+      toast.error(errorMessage)
     } finally {
       setIsSwapping(false)
     }
-  }, [route, account, walletConnected])
+  }, [route, account, walletConnected, wallet, fromToken, fromAmount])
 
-  const handleWalletConnect = useCallback((connected: boolean, accountData?: any) => {
+  const handleWalletConnect = useCallback((connected: boolean, accountData?: any, walletInstance?: any) => {
     setWalletConnected(connected)
     setAccount(accountData)
+    setWallet(walletInstance)
+    console.log("[v1] Wallet connection state:", { connected, accountData })
   }, [])
 
+  // Enhanced token selection handlers with validation
+  const handleFromTokenSelect = useCallback((token: Token) => {
+    console.log("[v1] From token selected:", token)
+    if (!isValidToken(token)) {
+      console.error("[v1] Invalid from token:", token)
+      return
+    }
+    setFromToken(token)
+    // Clear route when token changes
+    setRoute(null)
+    setToAmount("")
+  }, [isValidToken])
+
+  const handleToTokenSelect = useCallback((token: Token) => {
+    console.log("[v1] To token selected:", token)
+    if (!isValidToken(token)) {
+      console.error("[v1] Invalid to token:", token)
+      return
+    }
+    setToToken(token)
+    // Clear route when token changes
+    setRoute(null)
+    setToAmount("")
+  }, [isValidToken])
+
+  // Effect for route fetching with debounce
   useEffect(() => {
+    console.log("[v1] useEffect: Checking if should fetch route:", shouldFetchRoute)
+
+    if (!shouldFetchRoute) {
+      setRoute(null)
+      setToAmount("")
+      return
+    }
+
     const debounce = setTimeout(() => {
       fetchSwapRoute()
     }, 800)
 
     return () => clearTimeout(debounce)
-  }, [fetchSwapRoute])
+  }, [shouldFetchRoute, fetchSwapRoute])
 
   const isSwapDisabled = useMemo(
     () =>
       !walletConnected ||
-      !fromToken ||
-      !toToken ||
+      !isValidToken(fromToken) ||
+      !isValidToken(toToken) ||
       !fromAmount ||
       Number.parseFloat(fromAmount) <= 0 ||
+      fromToken?.id === toToken?.id ||
       isLoading ||
       isSwapping ||
-      !!error,
-    [walletConnected, fromToken, toToken, fromAmount, isLoading, isSwapping, error],
+      !!error ||
+      !route,
+    [walletConnected, fromToken, toToken, fromAmount, isLoading, isSwapping, error, route, isValidToken],
   )
 
   const estimatedValue = useMemo(() => {
@@ -192,15 +322,8 @@ export default function SwapInterface() {
       <div className="w-full max-w-lg space-y-6 relative z-10">
         <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="text-center space-y-2">
           <h1 className="text-4xl font-bold text-white flex items-center justify-center gap-3 ">
-            Intear Dex
-            <Image
-           src="/logo.svg"
-            alt="Intear DEX Logo"
-            width={32}
-            height={32}
-            className="h-8 w-8"
-            priority
-           />
+            Intear DEX
+            <Image src="/logo.svg" alt="Intear Logo" width={40} height={40} className="h-10 w-10" />
           </h1>
           <p className="text-gray-400 ">Lightning-fast swaps on NEAR Protocol</p>
         </motion.div>
@@ -212,7 +335,7 @@ export default function SwapInterface() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.1 }}
         >
-          <Card className="p-8 bg-white border-2 border-black shadow-xl rounded-xl">
+          <Card className="p-8 bg-white border-2 border-black shadow-2xl rounded-xl">
             <div className="space-y-6">
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
@@ -221,7 +344,7 @@ export default function SwapInterface() {
                 </div>
 
                 <div className="space-y-3">
-                  <TokenSelector token={fromToken} onSelect={setFromToken} placeholder="Select Token" />
+                  <TokenSelector token={fromToken} onSelect={handleFromTokenSelect} placeholder="Select Token" />
 
                   <div className="relative">
                     <Input
@@ -273,7 +396,7 @@ export default function SwapInterface() {
               <div className="space-y-4">
                 <label className="text-lg font-bold text-black ">To</label>
                 <div className="space-y-3">
-                  <TokenSelector token={toToken} onSelect={setToToken} placeholder="Select Token" />
+                  <TokenSelector token={toToken} onSelect={handleToTokenSelect} placeholder="Select Token" />
 
                   <div className="relative">
                     <Input
@@ -350,16 +473,25 @@ export default function SwapInterface() {
                       <TrendingUp className="h-5 w-5" />
                       Finding Best Route...
                     </div>
+                  ) : !isValidToken(fromToken) || !isValidToken(toToken) ? (
+                    <div className="flex items-center gap-3">
+                      Select Tokens
+                       <Image src="/logo.svg" alt="Intear Logo" width={40} height={40} className="h-10 w-10" />
+                    </div>
+                  ) : fromToken?.id === toToken?.id ? (
+                    <div className="flex items-center gap-3">
+                      Select Different Tokens
+                       <Image src="/logo.svg" alt="Intear Logo" width={40} height={40} className="h-10 w-10" />
+                    </div>
+                  ) : !route ? (
+                    <div className="flex items-center gap-3">
+                      Enter Amount
+                       <Image src="/logo.svg" alt="Intear Logo" width={40} height={40} className="h-10 w-10" />
+                    </div>
                   ) : (
                     <div className="flex items-center gap-3">
                       Swap Tokens
-                      <Image
-                      src="/logo.svg"
-                      alt="Intear DEX Logo"
-                      width={24}
-                      height={24}
-                      className="h-6 w-6"
-                      />
+                       <Image src="/logo.svg" alt="Intear Logo" width={40} height={40} className="h-10 w-10" />
                     </div>
                   )}
                 </Button>

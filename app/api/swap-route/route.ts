@@ -1,157 +1,209 @@
-import { type NextRequest, NextResponse } from "next/server"
+import { type NextRequest, NextResponse } from "next/server";
+
+interface SwapResponse {
+  route: string[];
+  amountOut: string;
+  minimumReceived: string;
+  priceImpact: string;
+  estimatedGas: string;
+  fee: string;
+  transactions: any[];
+  needsUnwrap: boolean;
+  deadline: number;
+  hasSlippage: boolean;
+  dexId: string;
+  useIntents: boolean;
+  intentsQuote: any;
+  totalFee: any;
+  exchangeRate: any;
+  rawResponse: any;
+  executionMetadata: {
+    requiresMultipleTransactions: boolean;
+    estimatedExecutionTime: number;
+    gasEstimate: string;
+    depositRequired: string;
+  };
+}
 
 export async function POST(request: NextRequest) {
   try {
-    const { tokenIn, tokenOut, amountIn, traderAccountId, signingPublicKey } = await request.json()
+    const {
+      tokenIn,
+      tokenOut,
+      amountIn,
+      decimalsIn,
+      decimalsOut,
+      slippageType,
+      maxSlippage,
+      minSlippage,
+      traderAccountId,
+      signingPublicKey,
+    } = await request.json();
 
-    const amount = Number.parseFloat(amountIn)
+    // Validate inputs
+    if (!tokenIn || !tokenOut) {
+      console.error("[dex] Missing tokenIn or tokenOut:", { tokenIn, tokenOut });
+      return NextResponse.json({ error: "Missing tokenIn or tokenOut" }, { status: 400 });
+    }
+
+    const amount = Number.parseFloat(amountIn);
     if (isNaN(amount) || amount <= 0) {
-      return NextResponse.json({ error: "Invalid amount" }, { status: 400 })
+      console.error("[dex] Invalid amount:", amountIn);
+      return NextResponse.json({ error: "Invalid amount" }, { status: 400 });
     }
 
-    console.log("[dex] Fetching swap route from Intear DEX API:", { tokenIn, tokenOut, amountIn })
+    if (!Number.isInteger(decimalsIn) || !Number.isInteger(decimalsOut)) {
+      console.error("[dex] Invalid decimals:", { decimalsIn, decimalsOut });
+      return NextResponse.json({ error: "Invalid decimals" }, { status: 400 });
+    }
 
-    try {
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 15000) // 15 second timeout
+    console.log("[dex] Fetching swap route:", { tokenIn, tokenOut, amountIn, slippageType, traderAccountId });
 
-      // Convert amount to token's smallest unit (assuming 24 decimals for NEAR tokens)
-      const decimals = 24 // This should ideally come from token metadata
-      const amountInSmallestUnit = (amount * Math.pow(10, decimals)).toString()
+    const amountInSmallestUnit = (BigInt(Math.floor(amount * Math.pow(10, decimalsIn)))).toString();
 
-      // Build query parameters according to the API documentation
-      const params = new URLSearchParams({
-        token_in: tokenIn === 'near' ? 'near' : tokenIn,
-        token_out: tokenOut === 'near' ? 'near' : tokenOut,
-        amount_in: amountInSmallestUnit,
-        max_wait_ms: '3000', // 3 seconds max wait time
-        slippage_type: 'Auto',
-        max_slippage: '0.05', // 5% max slippage
-        min_slippage: '0.001', // 0.1% min slippage
-        dexes: 'Rhea,Veax,Aidols,GraFun,RheaDcl,Wrap,MetaPool,Linear', // Use available DEXes
-      })
+    console.log("[dex] Amount conversion:", {
+      originalAmount: amountIn,
+      decimalsIn,
+      convertedAmount: amountInSmallestUnit,
+      calculation: `${amount} * 10^${decimalsIn} = ${amountInSmallestUnit}`
+    });
 
-      // Add optional parameters if provided
-      if (traderAccountId) {
-        params.append('trader_account_id', traderAccountId)
-      }
-      if (signingPublicKey) {
-        params.append('signing_public_key', signingPublicKey)
-      }
+    const params = new URLSearchParams({
+      token_in: tokenIn === "near" ? "near" : tokenIn,
+      token_out: tokenOut === "near" ? "near" : tokenOut,
+      amount_in: amountInSmallestUnit, // Use amount_in, not amount_out
+      max_wait_ms: "10000",
+      slippage_type: slippageType || "Auto",
+    });
 
-      const apiUrl = `https://router.intear.tech/route?${params.toString()}`
-      console.log("[dex] Calling Intear API:", apiUrl)
+    if (slippageType === "Auto") {
+      params.append("max_slippage", maxSlippage || "0.05");
+      params.append("min_slippage", minSlippage || "0.001");
+    } else if (slippageType === "Fixed") {
+      params.append("slippage", maxSlippage || "0.01");
+    }
 
-      const response = await fetch(apiUrl, {
-        method: "GET",
-        headers: {
-          "Accept": "application/json",
-        },
-        signal: controller.signal,
-      })
+    // Update dexes list to match the valid DEX IDs from the API
+    params.append("dexes", "Rhea,Veax,Aidols,GraFun,Jumpdefi,Wrap,RheaDcl,NearIntents");
 
-      clearTimeout(timeoutId)
+    if (traderAccountId) {
+      params.append("trader_account_id", traderAccountId);
+    }
+    if (signingPublicKey) {
+      params.append("signing_public_key", signingPublicKey);
+    }
 
-      if (response.ok) {
-        const contentType = response.headers.get("content-type")
-        if (contentType && contentType.includes("application/json")) {
-          const routeData = await response.json()
-          console.log("[dex] Received swap route from Intear API:", routeData)
+    const apiUrl = `https://router.intear.tech/route?${params.toString()}`;
+    console.log("[dex] Calling Intear API:", apiUrl);
 
-          // Transform the API response to match your frontend expectations
-          if (routeData && routeData.length > 0) {
-            const bestRoute = routeData[0] // Take the first (best) route
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-            // Convert amounts back to human readable format
-            const estimatedAmountOut = bestRoute.estimated_amount?.amount_out
-            const worstCaseAmountOut = bestRoute.worst_case_amount?.amount_out
+    const response = await fetch(apiUrl, {
+      method: "GET",
+      headers: {
+        "Accept": "application/json",
+        "User-Agent": "IntearDEXAggregator/1.0",
+      },
+      signal: controller.signal,
+    });
 
-            const transformedResponse = {
-              route: [bestRoute.dex_id],
-              amountOut: estimatedAmountOut ? (Number(estimatedAmountOut) / Math.pow(10, decimals)).toFixed(6) : "0",
-              minimumReceived: worstCaseAmountOut ? (Number(worstCaseAmountOut) / Math.pow(10, decimals)).toFixed(6) : "0",
-              priceImpact: bestRoute.has_slippage ? "0.5" : "0", // Estimate price impact
-              estimatedGas: "0.003", // Estimate gas cost
-              fee: "0.003", // Estimate fee
-              transactions: bestRoute.execution_instructions || [],
-              needsUnwrap: bestRoute.needs_unwrap || false,
-              deadline: bestRoute.deadline,
-              hasSlippage: bestRoute.has_slippage,
-              dexId: bestRoute.dex_id,
-              rawResponse: routeData // Include raw response for debugging
-            }
+    clearTimeout(timeoutId);
 
-            return NextResponse.json(transformedResponse)
-          } else {
-            console.log("[dex] No routes found from Intear API")
-            return NextResponse.json({ error: "No routes available" }, { status: 404 })
-          }
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("[dex] Intear API request failed with status:", response.status, "Error text:", errorText);
+
+      // Handle specific error cases
+      if (response.status === 400) {
+        if (errorText.includes("Invalid dex id")) {
+          return NextResponse.json({ error: "Invalid DEX configuration. Please try again." }, { status: 400 });
+        } else if (errorText.includes("amount")) {
+          return NextResponse.json({ error: "Invalid swap amount. Please check your input." }, { status: 400 });
         } else {
-          console.log("[dex] Intear API returned non-JSON response")
-          throw new Error("Invalid response format")
+          return NextResponse.json({ error: `Invalid request: ${errorText}` }, { status: 400 });
         }
+      } else if (response.status === 404) {
+        return NextResponse.json({ error: "No routes available for this token pair" }, { status: 404 });
+      } else if (response.status === 429) {
+        return NextResponse.json({ error: "Too many requests. Please try again in a moment" }, { status: 429 });
       } else {
-        const errorText = await response.text()
-        console.log("[dex] Intear API request failed with status:", response.status, errorText)
-        throw new Error(`API request failed: ${response.status}`)
+        return NextResponse.json(
+          { error: `DEX aggregator service error: ${errorText || response.status}` },
+          { status: 500 }
+        );
       }
-    } catch (apiError: any) {
-      if (apiError.name === "AbortError") {
-        console.error("[dex] Intear API request timed out")
-      } else {
-        console.error("[dex] Intear API error:", apiError.message)
-      }
-
-      // Fall back to mock data if API fails
-      console.log("[dex] Falling back to mock data due to API error")
     }
 
-    // Fallback mock route with structure similar to Intear API response
-    const mockRoute = {
-      route: ["Rhea"],
-      amountOut: (amount * (0.98 - Math.random() * 0.02)).toFixed(6),
-      minimumReceived: (amount * 0.95).toFixed(6), // 5% slippage protection
-      priceImpact: (Math.random() * 2 + 0.1).toFixed(2),
-      estimatedGas: "0.003",
-      fee: (amount * 0.003).toFixed(6), // 0.3% fee
-      hasSlippage: true,
-      needsUnwrap: false,
-      dexId: "Rhea",
-      transactions: [
-        {
-          NearTransaction: {
-            receiver_id: "v2.ref-finance.near",
-            actions: [
-              {
-                FunctionCall: {
-                  method_name: "ft_transfer_call",
-                  args: Buffer.from(JSON.stringify({
-                    amount: (amount * Math.pow(10, 24)).toString(),
-                    msg: JSON.stringify({
-                      actions: [{
-                        amount_in: (amount * Math.pow(10, 24)).toString(),
-                        token_in: tokenIn,
-                        token_out: tokenOut,
-                        min_amount_out: (amount * 0.95 * Math.pow(10, 24)).toString()
-                      }]
-                    }),
-                    receiver_id: "v2.ref-finance.near"
-                  })).toString('base64'),
-                  gas: "30000000000000",
-                  deposit: "1"
-                }
-              }
-            ],
-            continue_if_failed: false
-          }
-        }
-      ]
+    const routeData = await response.json();
+    console.log("[dex] Received swap route from Intear API:", routeData);
+
+    // Handle both single route object and array of routes
+    let bestRoute;
+    if (Array.isArray(routeData) && routeData.length > 0) {
+      bestRoute = routeData[0];
+    } else if (routeData && typeof routeData === 'object') {
+      bestRoute = routeData;
+    } else {
+      console.error("[dex] No valid routes found from Intear API:", routeData);
+      return NextResponse.json({ error: "No routes available for this token pair" }, { status: 404 });
     }
 
-    console.log("[dex] Using mock route data:", mockRoute)
-    return NextResponse.json(mockRoute)
-  } catch (error) {
-    console.error("[dex] Swap route API error:", error)
-    return NextResponse.json({ error: "Failed to fetch swap route" }, { status: 500 })
+    // Validate route data - the API might have different field names
+    if (!bestRoute) {
+      console.error("[dex] Invalid route data:", bestRoute);
+      return NextResponse.json({ error: "Invalid route data from DEX aggregator" }, { status: 500 });
+    }
+
+    // Extract amounts - handle different possible field names
+    const estimatedAmountOut = bestRoute.estimated_amount?.amount_out ||
+      bestRoute.amount_out ||
+      bestRoute.amountOut || "0";
+    const worstCaseAmountOut = bestRoute.worst_case_amount?.amount_out ||
+      bestRoute.minimum_received ||
+      bestRoute.minimumReceived ||
+      estimatedAmountOut;
+
+    const transformedResponse: SwapResponse = {
+      route: [bestRoute.dex_id || bestRoute.dexId || "Unknown"],
+      amountOut: (Number(estimatedAmountOut) / Math.pow(10, decimalsOut)).toFixed(6),
+      minimumReceived: (Number(worstCaseAmountOut) / Math.pow(10, decimalsOut)).toFixed(6),
+      priceImpact: bestRoute.price_impact ? (Number(bestRoute.price_impact) * 100).toFixed(2) :
+        bestRoute.priceImpact ? Number(bestRoute.priceImpact).toFixed(2) : "0.01",
+      estimatedGas: bestRoute.gas_estimate || bestRoute.gasEstimate || "0.003",
+      fee: bestRoute.total_fee ? (Number(bestRoute.total_fee) / Math.pow(10, decimalsIn)).toFixed(6) :
+        bestRoute.fee ? Number(bestRoute.fee).toFixed(6) : "0.003",
+      transactions: bestRoute.execution_instructions || bestRoute.transactions || [],
+      needsUnwrap: bestRoute.needs_unwrap || bestRoute.needsUnwrap || false,
+      deadline: bestRoute.deadline || Date.now() + 300000,
+      hasSlippage: bestRoute.has_slippage || bestRoute.hasSlippage || false,
+      dexId: bestRoute.dex_id || bestRoute.dexId || "Unknown",
+      useIntents: (bestRoute.dex_id || bestRoute.dexId) === "NearIntents",
+      intentsQuote: bestRoute.execution_instructions?.find((inst: any) => inst.IntentsQuote) ||
+        bestRoute.intentsQuote,
+      totalFee: bestRoute.total_fee || bestRoute.totalFee,
+      exchangeRate: bestRoute.exchange_rate || bestRoute.exchangeRate,
+      rawResponse: routeData,
+      executionMetadata: {
+        requiresMultipleTransactions: (bestRoute.execution_instructions || bestRoute.transactions || []).length > 1,
+        estimatedExecutionTime: bestRoute.estimated_execution_time || bestRoute.estimatedExecutionTime || 30,
+        gasEstimate: bestRoute.gas_estimate || bestRoute.gasEstimate || "50000000000000",
+        depositRequired: bestRoute.deposit_required || bestRoute.depositRequired || "1",
+      },
+    };
+
+    console.log("[dex] Transformed response:", transformedResponse);
+    return NextResponse.json(transformedResponse);
+  } catch (error: any) {
+    if (error.name === "AbortError") {
+      console.error("[dex] Intear API request timed out");
+      return NextResponse.json({ error: "Request timed out. Please try again." }, { status: 408 });
+    } else {
+      console.error("[dex] Intear API error:", error.message, error.stack);
+      return NextResponse.json(
+        { error: error.message || "Failed to fetch swap route" },
+        { status: 500 }
+      );
+    }
   }
 }

@@ -7,7 +7,7 @@ import { useCallback, useEffect, useState } from "react"
 
 interface WalletConnectProps {
   connected: boolean
-  onConnect: (connected: boolean, account?: any) => void
+  onConnect: (connected: boolean, account?: any, wallet?: any) => void
 }
 
 const WALLET_OPTIONS = [
@@ -43,32 +43,31 @@ export default function WalletConnect({ connected, onConnect }: WalletConnectPro
 
   const initWalletSelector = useCallback(async () => {
     if (globalSelector) {
-      console.log("[dex] Using existing wallet selector")
+      console.log("[v1] Using existing wallet selector")
       return globalSelector
     }
 
     try {
-      console.log("[dex] Initializing wallet selector")
+      console.log("[v1] Initializing wallet selector")
 
       const { setupWalletSelector } = await import("@near-wallet-selector/core")
       const { setupMyNearWallet } = await import("@near-wallet-selector/my-near-wallet")
-
       const walletModules = [setupMyNearWallet()]
 
       try {
         const { setupMeteorWallet } = await import("@near-wallet-selector/meteor-wallet")
         walletModules.push(setupMeteorWallet())
-        console.log("[dex] Meteor wallet module loaded")
+        console.log("[v1] Meteor wallet module loaded")
       } catch (e) {
-        console.warn("[dex] Meteor wallet module not available:", e)
+        console.warn("[v1] Meteor wallet module not available:", e)
       }
 
       try {
         const { setupHotWallet } = await import("@near-wallet-selector/hot-wallet")
         walletModules.push(setupHotWallet())
-        console.log("[dex] Hot wallet module loaded")
+        console.log("[v1] Hot wallet module loaded")
       } catch (e) {
-        console.warn("[dex] Hot wallet module not available:", e)
+        console.warn("[v1] Hot wallet module not available:", e)
       }
 
       const walletSelector = await setupWalletSelector({
@@ -81,8 +80,8 @@ export default function WalletConnect({ connected, onConnect }: WalletConnectPro
       const state = walletSelector.store.getState()
       const available = state.modules.map((module: any) => module.id)
       setAvailableWallets(available)
-      console.log("[dex] Available wallets:", available)
-      console.log("[dex] Wallet selector initialized successfully")
+      console.log("[v1] Available wallets:", available)
+      console.log("[v1] Wallet selector initialized successfully")
 
       const isSignedIn = walletSelector.isSignedIn()
       if (isSignedIn) {
@@ -91,14 +90,14 @@ export default function WalletConnect({ connected, onConnect }: WalletConnectPro
         if (accounts.length > 0) {
           const accountData = accounts[0]
           setAccount(accountData)
-          onConnect(true, accountData)
-          console.log("[dex] Found existing wallet connection:", accountData.accountId)
+          onConnect(true, accountData, wallet)
+          console.log("[v1] Found existing wallet connection:", accountData.accountId)
         }
       }
 
       return walletSelector
     } catch (error) {
-      console.error("[dex] Failed to initialize wallet selector:", error)
+      console.error("[v1] Failed to initialize wallet selector:", error)
       setInitError("Failed to initialize wallet connection")
       throw error
     }
@@ -115,7 +114,7 @@ export default function WalletConnect({ connected, onConnect }: WalletConnectPro
       setShowWallets(false)
 
       try {
-        console.log("[dex] Connecting to wallet:", walletId)
+        console.log("[v1] Connecting to wallet:", walletId)
 
         const selector = await initWalletSelector()
 
@@ -128,7 +127,6 @@ export default function WalletConnect({ connected, onConnect }: WalletConnectPro
         try {
           const isInIframe = window !== window.top
           if (isInIframe) {
-            // In iframe environment, redirect to wallet directly
             const walletOption = WALLET_OPTIONS.find((w) => w.id === walletId)
             if (walletOption) {
               const redirectUrl = `${walletOption.url}/login?contract_id=intear.near&success_url=${encodeURIComponent(window.location.href)}&failure_url=${encodeURIComponent(window.location.href)}`
@@ -142,12 +140,11 @@ export default function WalletConnect({ connected, onConnect }: WalletConnectPro
 
           try {
             await wallet.signIn({
-              contractId: "intear.near", // Intear contract for permissions
-              methodNames: ["swap", "get_return"], // Required methods
+              contractId: "intear.near",
+              methodNames: ["swap", "get_return"],
             })
           } catch (signInError: any) {
             if (signInError.message?.includes("outerHeight") || signInError.message?.includes("cross-origin")) {
-              // Handle cross-origin popup blocking
               const walletOption = WALLET_OPTIONS.find((w) => w.id === walletId)
               if (walletOption) {
                 window.open(walletOption.url, "_blank", "noopener,noreferrer")
@@ -162,11 +159,11 @@ export default function WalletConnect({ connected, onConnect }: WalletConnectPro
           if (accounts.length > 0) {
             const accountData = accounts[0]
             setAccount(accountData)
-            onConnect(true, accountData)
-            console.log("[dex] Wallet connected successfully:", accountData.accountId)
+            onConnect(true, accountData, wallet)
+            console.log("[v1] Wallet connected successfully:", accountData.accountId)
           }
         } catch (walletError: any) {
-          console.error("[dex] Wallet connection error:", walletError)
+          console.error("[v1] Wallet connection error:", walletError)
           if (walletError.message?.includes("User closed")) {
             setInitError("Connection cancelled by user")
           } else if (walletError.message?.includes("outerHeight") || walletError.message?.includes("cross-origin")) {
@@ -179,7 +176,7 @@ export default function WalletConnect({ connected, onConnect }: WalletConnectPro
           }
         }
       } catch (error) {
-        console.error("[dex] Failed to connect wallet:", error)
+        console.error("[v1] Failed to connect wallet:", error)
         setInitError("Failed to connect wallet. Please try the redirect button to open your wallet directly.")
       } finally {
         setIsLoading(false)
@@ -196,9 +193,9 @@ export default function WalletConnect({ connected, onConnect }: WalletConnectPro
       }
       setAccount(null)
       onConnect(false)
-      console.log("[dex] Wallet disconnected")
+      console.log("[v1] Wallet disconnected")
     } catch (error) {
-      console.error("[dex] Failed to disconnect wallet:", error)
+      console.error("[v1] Failed to disconnect wallet:", error)
     }
   }, [onConnect])
 

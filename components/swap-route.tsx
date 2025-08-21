@@ -4,8 +4,13 @@ interface SwapRouteProps {
   route: {
     route: string[]
     amountOut: string
+    minimumReceived: string
     priceImpact: string
+    estimatedGas: string
+    fee: string
     transactions: any[]
+    dexId: string
+    useIntents: boolean
   }
 }
 
@@ -25,6 +30,19 @@ export default function SwapRoute({ route }: SwapRouteProps) {
           <span className="text-gray-600">TRANSACTIONS:</span>
           <span className="text-black">{route.transactions.length}</span>
         </div>
+        <div className="flex justify-between">
+          <span className="text-gray-600">MIN RECEIVED:</span>
+          <span className="text-black">{route.minimumReceived}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-gray-600">FEE:</span>
+          <span className="text-black">{route.fee}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-gray-600">GAS ESTIMATE:</span>
+          <span className="text-black">{route.estimatedGas} NEAR</span>
+        </div>
+        {route.useIntents && <div className="text-blue-600">Using Near Intents for optimal routing</div>}
       </div>
     </div>
   )
