@@ -49,7 +49,6 @@ npm install
 
 
 Set Up Environment VariablesCreate a .env.local file in the root directory and add the following:
-NEXT_PUBLIC_USE_TESTNET=true # Set to false for production
 NEXT_PUBLIC_API_URL=https://api.intear.tech # or your custom API endpoint
 
 
@@ -61,9 +60,7 @@ npm run dev
 The app will be available at http://localhost:3000.
 
 
-Configuration
 
-Testnet Mode: Set NEXT_PUBLIC_USE_TESTNET=true in .env.local to use the NEAR testnet for development. This enables connections to testnet versions of wallets (e.g., https://testnet.mynearwallet.com). Remove or set to false for production.
 API Endpoints:
 Token data: /api/tokens (proxies to prices.intear.tech/tokens-reputable)
 Swap routes: /api/swap-route (proxies to api.intear.tech/v1/quote)
@@ -143,23 +140,6 @@ framer-motion for animations
 sonner for toast notifications
 next, react, typescript
 
-Running Tests
-To test on the NEAR testnet:
-
-Set NEXT_PUBLIC_USE_TESTNET=true in .env.local.
-Create a testnet wallet at https://testnet.mynearwallet.com.
-Fund the wallet with testnet NEAR using the faucet.
-Run the app (yarn dev) and connect the testnet wallet.
-Perform swaps and verify transactions on https://testnet.nearblocks.io.
-
-Removing Testnet for Production
-
-Set NEXT_PUBLIC_USE_TESTNET=false in .env.local or remove the variable.
-Remove the IS_TESTNET constant and related logic in wallet-connect.tsx:
-Replace network: IS_TESTNET ? "testnet" : "mainnet" with network: "mainnet".
-Update WALLET_OPTIONS URLs to remove testnet versions.
-Update contractId in handleWalletSelect to intear.near.
-
 
 
 Contributing
@@ -173,13 +153,7 @@ Open a pull request with a detailed description.
 
 Please adhere to the Code of Conduct and ensure code is linted and tested.
 License
-This project is licensed under the MIT License. See the LICENSE file for details.
-Contact
 For questions or support:
 
-Email: support@intear.tech
+Email: brightsuccess117@gmail.com
 GitHub Issues: intear-dex/issues
-Discord: Intear Community
-
-
-Powered by Intear DEX Aggregator • Built for the NEAR Protocol
